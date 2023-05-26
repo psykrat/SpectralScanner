@@ -1,0 +1,20 @@
+{
+    "hydra": {
+        "username": "user",
+        "passlist": "passlist.txt",
+        "timeout": 600
+    },
+    "nmap": {
+        "timeout": 600
+    },
+    "dirb": {
+        "timeout": 600
+    },
+    "nikto": {
+        "timeout": 600
+    },
+    "enum4linux": {
+        "timeout": 600
+    },
+    "log_level": "INFO"
+}
