@@ -52,8 +52,4 @@ python3 spectralscanner.py [target IP] [project name] [--dry-run]
 
 ## Note
 
-This script is intended for educational and legitimate network auditing purposes only. Always obtain the necessary permissions and operate within the law when performing network scans and penetration testing. Unauthorized scanning or testing can lead to legal issues.
-
----
-
-Please tailor this `README.md` to your specific project's needs.
+This script is intended for educational and legitimate network auditing purposes only.
