@@ -1,4 +1,4 @@
-# Network Scanning Tool
+# SpectralScanner
 
 This script is a network scanning tool developed in Python that scans a target IP and automatically runs different tools based on the services found. The script runs nmap, dirb, nikto, hydra, and enum4linux based on the services detected on the target machine.
 
@@ -43,7 +43,7 @@ A JSON configuration file (`config.json`) is used to set parameters for the tool
 ## Usage
 
 ```bash
-python3 network_scan.py [target IP] [project name] [--dry-run]
+python3 spectralscanner.py [target IP] [project name] [--dry-run]
 ```
 
 - `target IP` is the IP address of the target machine.
