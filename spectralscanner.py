@@ -1,13 +1,13 @@
 import json
 import os
 import subprocess
-import xml.etree.ElementTree as ET
 import threading
 import logging
 import sys
 import argparse
 import re
 from concurrent.futures import ThreadPoolExecutor
+from shlex import quote
 
 # Create a thread pool executor
 executor = ThreadPoolExecutor(max_workers=10)
@@ -17,7 +17,7 @@ def is_valid_ipv4(ip):
     pattern = re.compile(r'^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$')
     return bool(pattern.match(ip))
 
-def run_command(command, output_file, timeout=None):
+def run_command(command, output_file, timeout=None, dry_run=False):
     with open(output_file, 'w') as f:
         try:
             if dry_run:
@@ -37,28 +37,42 @@ def run_command(command, output_file, timeout=None):
 def command_exists(command):
     return subprocess.call("type " + command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE) == 0
 
-def run_tools(service, targetURL, output_file):
+def run_tools(service, targetURL, output_file, config):
     if service == 'http':
         logging.info("HTTP service found. Running dirb and nikto...")
-        executor.submit(run_command, f"dirb {targetURL}", f"{output_file}_dirb.txt", timeout=config['dirb']['timeout'])
-        executor.submit(run_command, f"nikto -h {targetURL}", f"{output_file}_nikto.txt", timeout=config['nikto']['timeout'])
+        executor.submit(run_command, f"dirb {quote(targetURL)}", f"{output_file}_dirb.txt", timeout=config['dirb']['timeout'])
+        executor.submit(run_command, f"nikto -h {quote(targetURL)}", f"{output_file}_nikto.txt", timeout=config['nikto']['timeout'])
 
     elif service == 'ssh':
         logging.info("SSH service found. Running hydra...")
-        executor.submit(run_command, f"hydra -l {config['hydra']['username']} -P {config['hydra']['passlist']} ssh://{targetURL}", f"{output_file}_hydra.txt", timeout=config['hydra']['timeout'])
+        executor.submit(run_command, f"hydra -l {quote(config['hydra']['username'])} -P {quote(config['hydra']['passlist'])} ssh://{quote(targetURL)}", f"{output_file}_hydra.txt", timeout=config['hydra']['timeout'])
 
     elif service == 'smb' or service == 'netbios-ssn':
         logging.info("SMB service found. Running enum4linux...")
-        executor.submit(run_command, f"enum4linux {targetIP}", f"{output_file}_enum4linux.txt", timeout=config['enum4linux']['timeout'])
+        executor.submit(run_command, f"enum4linux {quote(targetIP)}", f"{output_file}_enum4linux.txt", timeout=config['enum4linux']['timeout'])
 
-def main(targetIP, projectName, dry_run):
+def parse_nmap_output(file_path):
+    services = []
+
+    with open(file_path, 'r') as file:
+        lines = file.readlines()
+
+    for line in lines:
+        if "/tcp" in line:
+            service_info = line.split()
+            service = service_info[2]
+            services.append(service)
+
+    return services
+
+def main(targetIP, projectName, dry_run=False, log_file='script.log'):
     # Load config
     with open('config.json') as f:
         config = json.load(f)
 
     # Setup logging
     log_level = logging.getLevelName(config.get('log_level', 'INFO'))
-    logging.basicConfig(filename='script.log', level=log_level)
+    logging.basicConfig(filename=log_file, level=log_level)
 
     # Validate target IP
     if not is_valid_ipv4(targetIP):
@@ -66,7 +80,7 @@ def main(targetIP, projectName, dry_run):
         return
 
     # Define file names for output
-    xmlOutput = f"{projectName}.xml"
+    txtOutput = f"{projectName}.txt"
     output_prefix = f"{projectName}"
 
     # Define the URL for tools
@@ -81,20 +95,16 @@ def main(targetIP, projectName, dry_run):
 
     # Run the nmap command
     logging.info("Running nmap command...")
-    if not run_command(f"sudo nmap -T4 -sC -sV -p- --min-rate=1000 -oX {xmlOutput} {targetIP}", xmlOutput, timeout=config['nmap']['timeout']):
+    if not run_command(f"sudo nmap -T4 -sC -sV -oN {quote(txtOutput)} {quote(targetIP)}", txtOutput, timeout=config['nmap']['timeout'], dry_run=dry_run):
         logging.error("Nmap command failed. Exiting.")
         return
 
-    # Parse the nmap XML output to check for services
+    # Parse the nmap output to check for services
     logging.info("Parsing nmap output and running appropriate tools...")
-    tree = ET.parse(xmlOutput)
-    root = tree.getroot()
+    services = parse_nmap_output(txtOutput)
 
-    for host in root.iter('host'):
-        for ports in host.iter('ports'):
-            for port in ports.iter('port'):
-                service = port.find('service').get('name')
-                executor.submit(run_tools, service, targetURL, output_prefix)
+    for service in services:
+        executor.submit(run_tools, service, targetURL, output_prefix, config)
 
     # Wait for all threads to finish
     executor.shutdown(wait=True)
@@ -106,6 +116,7 @@ if __name__ == "__main__":
     parser.add_argument('targetIP', help='Target IP')
     parser.add_argument('projectName', help='Project name')
     parser.add_argument('--dry-run', action='store_true', help='Dry run: show commands without running them')
+    parser.add_argument('--log-file', default='script.log', help='Log file location')
     args = parser.parse_args()
 
-    main(args.targetIP, args.projectName, args.dry_run)
+    main(args.targetIP, args.projectName, args.dry_run, args.log_file)
